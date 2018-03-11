@@ -1,6 +1,6 @@
 var dataParams = {
   "criteria": {
-    "dimension": "AdspaceId",
+    "dimension": "",
     "child": null
   },
   "kpi": {
@@ -16,57 +16,106 @@ var dataParams = {
   },
   "period": {
     "period_type": "fixed",
-    "start_date": "2017-12-05",
-    "end_date": "2017-12-11"
+    "start_date": "",
+    "end_date": ""
   }
 };
 
+// credentials
+var clientId = '';
+var clientSecret = "";
 
-function requestData(adSpaceId, date) {
-  if(adSpaceId && date){
-    return retrieveData(adSpaceId, date);
+
+// MAIN FUNCTION
+function getData(dimension, date) {
+  if(!dimension || !date){
+    return "Ad Space Id or Date was not provided";
   }
-  return "No Adspace or date provided";
-}
+  var option = {
+    'method': 'POST',
+    'dataType': 'json',
+    'contentType': 'application/x-www-form-urlencoded',
+    'payload': {
+        'client_id': clientId,
+        'client_secret': clientSecret,
+        'grant_type': 'client_credentials'
+      }
+  };
 
+  //fetch auth token
+  var result = UrlFetchApp.fetch('https://auth.smaato.com/v2/auth/token/', option);
+  var jsonResult = JSON.parse(result.getContentText());
+  var authToken = jsonResult["access_token"];
 
-function retrieveData(adSpaceId, date){
+  //format the date
   var formatedDate = convertDate(date);
   dataParams["period"]["start_date"] = formatedDate;
   dataParams["period"]["end_date"] = formatedDate;
 
-  var option = {
-    'headers': {
-      'Authorization': `Bearer ${AuthCodeHere}`
-    },
-    'method': 'POST',
-    'contentType': 'application/json',
-    'payload': JSON.stringify(dataParams)
-  };
+  //make a request
+  if (typeof dimension === 'number'){
+    dataParams['criteria']['dimension'] = "AdspaceId";
+    return requestDataWithInformation(authToken, dimension, dataParams);
+  } else {
+    dataParams['criteria']['dimension'] = "ApplicationId";
+    return requestDataWithInformation(authToken, dimension.toUpperCase(), dataParams);
+  }
+}
 
-  var result = UrlFetchApp.fetch('https://api.smaato.com/v1/reporting/', option);
-  var stringResult = result.getContentText();
-  var json = JSON.parse(stringResult);
+// Request for data
+function requestDataWithInformation(token, dimensionValue, data){
+  var id = null;
 
-  var selectedAdSpaceJson = selectAdSpace(json, adSpaceId);
-  if(!selectedAdSpaceJson){
-    return "Adspace not found on this day";
+  if(dimensionValue === "IOS"){
+    id = 120000494;
+  } else if(dimensionValue === "ANDROID"){
+    id = 120000491;
+  } else if(typeof dimensionValue === "number"){
+    id = dimensionValue;
+  } else {
+    return "AdSpaceId or App is incorrect";
   }
 
-  var finalFormat = formatData(selectedAdSpaceJson);
-  return finalFormat;
+  var response = sendRequestToSoma(token, data);
+  var selectedObject = selectObjectById(response, id);
+
+  if(selectedObject){
+    var finalFormat = formatData(selectedObject);
+    return finalFormat;
+  }
+  else {
+    return handleError(dimensionValue);
+  }
+
 }
 
 
 
-// Helper Functions
+// HELPER FUNCTIONS
 
-function selectAdSpace(object, adSpaceId){
-  var selectedAdSpaceJson;
+function sendRequestToSoma(token, requestData){
+   var option = {
+    'headers': {
+      'Authorization': 'Bearer ' + token
+    },
+    'method': 'POST',
+    'contentType': 'application/json',
+    'payload': JSON.stringify(requestData)
+  };
+
+  var result = UrlFetchApp.fetch('https://api.smaato.com/v1/reporting/', option);
+  var stringResult = result.getContentText();
+  var response = JSON.parse(stringResult);
+  return response;
+}
+
+
+function selectObjectById(object, id){
+  var selectedObject;
   for(var i = 0; i < object.length; i++){
-     if(object[i]["criteria"][0]["value"] === adSpaceId){
-      selectedAdSpaceJson = object[i];
-      return selectedAdSpaceJson;
+     if(object[i]["criteria"][0]["value"] === id){
+      selectedObject = object[i];
+      return selectedObject;
     }
   }
   return false;
@@ -74,7 +123,7 @@ function selectAdSpace(object, adSpaceId){
 
 
 function formatData(data){
-  var getDataForColumns = ["incomingAdRequests", "servedAds", "impressions", "fillrate" ,"grossRevenue", "netRevenue"];
+  var getDataForColumns = ["incomingAdRequests", "servedAds", "fillrate", "impressions", "grossRevenue", "netRevenue"];
   var outputData = [[]];
   var imp = data["kpi"]["impressions"];
 
@@ -104,4 +153,13 @@ function convertDate(date){
 
 function convertRevenueToRate(col, cost, impression){
   return cost / impression * 1000;
+}
+
+
+function handleError(value){
+  if(typeof value === "number"){
+    return "Adspace Id is incorrect or the adspace did not run on this day.";
+  } else {
+    return "The App did not run.";
+  }
 }
