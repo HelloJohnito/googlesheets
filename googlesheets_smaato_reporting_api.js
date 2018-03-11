@@ -1,3 +1,6 @@
+// Smaato Reporting API documentation:
+// https://wiki.smaato.com/display/SPX/SPX+Reporting+API
+
 var dataParams = {
   "criteria": {
     "dimension": "",
@@ -22,7 +25,7 @@ var dataParams = {
 };
 
 // credentials
-var clientId = '';
+var clientId = "";
 var clientSecret = "";
 
 
